@@ -1,0 +1,11 @@
+{
+  "host": "0.0.0.0",
+  "port": 5595,
+  "everythingUnlocked": false,
+  "startingVbucks": 999999,
+  "gameServer": {
+    "ip": "127.0.0.1",
+    "port": 7777
+  },
+  "logUnknownRoutes": true
+}
