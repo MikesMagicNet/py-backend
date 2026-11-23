@@ -1,4 +1,4 @@
-"""Epic Connect: STOMP over websocket, used by the EOS SDK for chat and social pushes."""
+"""Epic Connect: STOMP over websocket, used by the EOS SDK for chat, presence and social pushes."""
 import json
 import time
 import uuid
@@ -21,6 +21,8 @@ class Conn:
 
 
 conns: dict[str, set[Conn]] = {}
+by_id: dict[str, Conn] = {}
+on_close: list = []  # async (account_id, connection_id) callbacks
 
 
 def _log(direction: str, who: str, text: str):
@@ -43,13 +45,42 @@ def _parse(raw: str) -> tuple[str, dict, str]:
     return lines[0].strip(), headers, body.rstrip("\0")
 
 
+def _claims(token: str) -> dict:
+    return read_jwt(token.split(" ", 1)[-1].replace("eg1~", "").strip()) or {}
+
+
 def _account(token: str) -> str:
-    token = token.split(" ", 1)[-1].replace("eg1~", "").strip()
-    claims = read_jwt(token) or {}
+    claims = _claims(token)
     sub = claims.get("sub", "")
     if not accounts.get(sub):
         sub = (claims.get("act") or {}).get("eaid", "")
     return sub if accounts.get(sub) else ""
+
+
+def _app_token(token: str) -> bool:
+    # EOS opens the socket with its client credentials token, the user is tied to it later
+    claims = _claims(token)
+    return bool(claims.get("clientId")) and claims.get("tokenType") == "clientToken"
+
+
+def bind(connection_id: str, account_id: str):
+    c = by_id.get(connection_id)
+    if not c or c.account_id == account_id or not accounts.get(account_id):
+        return
+    if c.account_id:
+        conns.get(c.account_id, set()).discard(c)
+    c.account_id = account_id
+    conns.setdefault(account_id, set()).add(c)
+    print(f"[Connect] {accounts.display_name(account_id)} connected")
+
+
+def _message(c: Conn, sub_id: str, kind: str, payload: dict) -> str:
+    body = json.dumps({"correlationId": uuid.uuid4().hex, "timestamp": int(time.time() * 1000),
+                       "id": uuid.uuid4().hex, "connectionId": c.id, "type": kind, "payload": payload},
+                      separators=(",", ":"))
+    return _frame("MESSAGE", {"destination": c.subs.get(sub_id, "launcher"), "message-id": uuid.uuid4().hex,
+                              "subscription": sub_id, "content-type": "application/json",
+                              "content-length": len(body.encode())}, body)
 
 
 async def _send(c: Conn, text: str):
@@ -63,14 +94,8 @@ async def _send(c: Conn, text: str):
 async def push(account_id: str, kind: str, payload: dict):
     """Sends one Epic Connect message to every connection of an account."""
     for c in list(conns.get(account_id, ())):
-        body = json.dumps({"correlationId": uuid.uuid4().hex, "timestamp": int(time.time() * 1000),
-                           "id": uuid.uuid4().hex, "connectionId": c.id, "type": kind, "payload": payload},
-                          separators=(",", ":"))
-        dests = c.subs or {"sub-0": "launcher"}
-        for sub_id, dest in dests.items():
-            await _send(c, _frame("MESSAGE", {"destination": dest, "message-id": uuid.uuid4().hex,
-                                              "subscription": sub_id, "content-type": "application/json",
-                                              "content-length": len(body.encode())}, body))
+        for sub_id in list(c.subs) or ["sub-0"]:
+            await _send(c, _message(c, sub_id, kind, payload))
 
 
 def online(account_id: str) -> bool:
@@ -80,9 +105,11 @@ def online(account_id: str) -> bool:
 async def serve(ws: WebSocket, protocols: list[str]):
     proto = next((p for p in ("v12.stomp", "v11.stomp", "v10.stomp") if p in protocols), protocols[0] if protocols else None)
     _log("upgrade", "", f"path={ws.url.path} headers={dict(ws.headers)}")
-    account_id = _account(ws.headers.get("authorization", ""))
+    upgrade_auth = ws.headers.get("authorization", "")
+    account_id = _account(upgrade_auth)
     await ws.accept(subprotocol=proto)
     c = Conn(ws, account_id)
+    by_id[c.id] = c
     _log("open", account_id, f"protocols={protocols} path={ws.url.path}")
     try:
         while True:
@@ -93,19 +120,28 @@ async def serve(ws: WebSocket, protocols: list[str]):
             _log("<-", c.account_id, raw)
             command, headers, body = _parse(raw)
             if command in ("CONNECT", "STOMP"):
+                frame_auth = headers.get("authorization", "") or headers.get("passcode", "")
                 if not c.account_id:
-                    c.account_id = _account(headers.get("authorization", "") or headers.get("passcode", ""))
-                if not c.account_id:
+                    c.account_id = _account(frame_auth)
+                if not c.account_id and not (_app_token(upgrade_auth) or _app_token(frame_auth)):
                     await _send(c, _frame("ERROR", {"message": "unauthorized"}))
                     await ws.close()
                     return
-                conns.setdefault(c.account_id, set()).add(c)
+                if c.account_id:
+                    conns.setdefault(c.account_id, set()).add(c)
+                    print(f"[Connect] {accounts.display_name(c.account_id)} connected")
                 await _send(c, _frame("CONNECTED", {"version": "1.2", "heart-beat": "30000,0",
                                                     "server": "halcyon-connect", "session": c.id,
                                                     "connection-id": c.id}))
-                print(f"[Connect] {accounts.display_name(c.account_id)} connected")
             elif command == "SUBSCRIBE":
-                c.subs[headers.get("id", f"sub-{len(c.subs)}")] = headers.get("destination", "launcher")
+                if not c.account_id:
+                    bind(c.id, _account(headers.get("authorization", "")))
+                sub_id = headers.get("id", f"sub-{len(c.subs)}")
+                first = not c.subs
+                c.subs[sub_id] = headers.get("destination", "launcher")
+                if first:
+                    # Hands EOS its connection id, presence is keyed on it
+                    await _send(c, _message(c, sub_id, "core.connect.v1.connected", {"connectionId": c.id}))
             elif command == "UNSUBSCRIBE":
                 c.subs.pop(headers.get("id", ""), None)
             elif command == "DISCONNECT":
@@ -118,9 +154,12 @@ async def serve(ws: WebSocket, protocols: list[str]):
     except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
+        by_id.pop(c.id, None)
         group = conns.get(c.account_id)
         if group and c in group:
             group.discard(c)
             if not group:
                 conns.pop(c.account_id, None)
             print(f"[Connect] {accounts.display_name(c.account_id)} disconnected")
+            for hook in on_close:
+                await hook(c.account_id, c.id)

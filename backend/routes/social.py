@@ -506,3 +506,4 @@ async def intention(ns: str, first: str, second: str, request: Request):
 @router.get(P + "/members/{account_id}/intentions")
 async def intentions_list(ns: str, account_id: str):
     return Parties.intentions.get(account_id, [])
+

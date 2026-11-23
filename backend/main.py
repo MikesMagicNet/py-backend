@@ -23,6 +23,10 @@ async def sockets(ws: WebSocket, path: str):
     if "xmpp" in protocols or not protocols:
         await xmpp.serve(ws)
     elif any("stomp" in p for p in protocols) or path.strip("/") in ("", "v2") or "notifications" in path:
+        if not CONFIG.get("epicConnect", False):
+            # Refused like Neonite: EOS then drops its own presence and parties for XMPP and the v1 party service
+            await ws.close(code=1008)
+            return
         await stomp.serve(ws, protocols)
     else:
         await ws.close(code=1008)  # lobby and cerberus sockets are not served
