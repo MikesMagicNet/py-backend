@@ -7,5 +7,6 @@
     "ip": "127.0.0.1",
     "port": 7777
   },
-  "logUnknownRoutes": true
+  "logUnknownRoutes": true,
+  "autoCreateAccounts": true
 }

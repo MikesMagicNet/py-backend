@@ -34,3 +34,16 @@ Download hosts (`download*.epicgames.com`, Akamai, Fastly) are left alone so ins
 
 - `requests.log`: every request and its status.
 - `datarouter.log`: the game's own telemetry, including `LoginStepFailure` events with the failing step.
+
+## Social
+
+Friends, parties, presence and chat run on the same port as the backend.
+
+- **XMPP** (`xmpp-service-prod.ol.epicgames.com`): presence, friend and party notifications. Log: `xmpp.log`.
+- **Epic Connect / STOMP** (`connect.epicgames.dev`): live chat delivery for the EOS SDK. Log: `stomp.log`.
+- **Chat REST** (`/epic/chat/v1/...`): whispers, DMs, party and group conversations. Bodies logged to `chat.log`.
+
+Both sockets arrive through the proxy on `/`; the websocket subprotocol (`xmpp` or `v1x.stomp`) picks the handler.
+
+State lives in `data/accounts.json`, `data/social.json` (friends, blocks) and `data/chat.json`. Parties are memory only.
+`autoCreateAccounts` in `config.json` creates an account on first login; turn it off once accounts come from the Discord bot.

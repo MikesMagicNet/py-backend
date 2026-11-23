@@ -1,3 +1,4 @@
+import re
 import hashlib
 import json
 
@@ -5,7 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse, Response
 
 from .. import catalog
-from ..utils import ROOT, DATA, get_version, new_id, now_iso
+from ..utils import CONFIG, ROOT, DATA, get_version, new_id, now_iso
 
 router = APIRouter()
 CLOUD = ROOT / "cloudstorage"
@@ -195,28 +196,6 @@ async def stats(account_id: str):
     return {"startTime": 0, "endTime": 0, "stats": {}, "accountId": account_id}
 
 
-@router.get("/friends/api/public/friends/{account_id}")
-@router.get("/friends/api/public/blocklist/{account_id}")
-@router.get("/friends/api/v1/{account_id}/recent/fortnite")
-async def friends_list(account_id: str):
-    return []
-
-
-@router.get("/friends/api/v1/{account_id}/summary")
-async def friends_summary(account_id: str):
-    return {"friends": [], "incoming": [], "outgoing": [], "suggested": [], "blocklist": [], "settings": {"acceptInvites": "public"}}
-
-
-@router.get("/friends/api/v1/{account_id}/settings")
-async def friends_settings(account_id: str):
-    return {"acceptInvites": "public"}
-
-
-@router.get("/party/api/v1/Fortnite/user/{account_id}")
-async def party_user(account_id: str):
-    return {"current": [], "pending": [], "invites": [], "pings": []}
-
-
 # Terms: shared agreement exists, account has nothing left to accept
 EULA_VERSION = 99
 
@@ -315,12 +294,20 @@ async def no_content_extra():
 # EOS SDK builds its service URLs from these, empty ones become /unknown
 @router.get("/sdk/v1/default")
 async def sdk_default():
-    return json.loads((DATA / "sdk_default.json").read_text())
+    return _local_sockets(json.loads((DATA / "sdk_default.json").read_text()))
 
 
 @router.get("/sdk/v1/product/{product}")
 async def sdk_product(product: str):
-    return json.loads((DATA / "sdk_product.json").read_text())
+    return _local_sockets(json.loads((DATA / "sdk_product.json").read_text()))
+
+
+def _local_sockets(cfg):
+    # The SDK's websockets skip the proxy, so point them straight at us
+    base = f"ws://127.0.0.1:{CONFIG['port']}"
+    text = re.sub(r"wss://[^/\"`]+", base, json.dumps(cfg))
+    text = text.replace('"ServerPort": 443', f'"ServerPort": {CONFIG["port"]}')
+    return json.loads(text)
 
 
 @router.get("/hotconfigs/v2/{name}")
@@ -340,3 +327,46 @@ async def datarouter(request: Request):
     with open(ROOT / "datarouter.log", "ab") as f:
         f.write(body + b"\n")
     return Response(status_code=204)
+
+
+# Lobby extras that 404'd on 43.10
+
+@router.get("/api/content/v2/launch-data")
+@router.get("/api/content/v4/launch-data")
+@router.post("/api/v1/fortnite-br/channel/interstitials/target")
+@router.put("/profile/privacy_settings")
+@router.put("/profile/languages")
+async def lobby_no_content():
+    return Response(status_code=204)
+
+
+@router.get("/api/inventory/v3/{deployment_id}/players/{account_id}/{name}")
+async def player_inventory(deployment_id: str, account_id: str, name: str):
+    return {"accountId": account_id, "items": {}, "stash": {}}
+
+
+@router.get("/api/v1/games/fortnite/trackprogress/{account_id}")
+async def track_progress(account_id: str):
+    return []
+
+
+@router.get("/api/quest/v3/{deployment_id}/progress/account/{account_id}")
+async def quest_progress(deployment_id: str, account_id: str):
+    return {"quests": [], "accountId": account_id}
+
+
+@router.get("/followers/api/v1/{ns}/{account_id}/followed")
+@router.get("/api/v2/interactions/latest/Fortnite/{account_id}")
+@router.get("/api/v2/interactions/aggregated/_/{account_id}")
+async def empty_list(account_id: str, ns: str = ""):
+    return []
+
+
+@router.get("/app_installation/status")
+async def app_installation():
+    return {}
+
+
+@router.post("/api/v1/assets/{rest:path}")
+async def assets(rest: str):
+    return {"FortCreativeDiscoverySurface": {"meta": {"promotion": 0}, "assets": {}}}

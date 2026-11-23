@@ -8,7 +8,8 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
-from ..utils import account_id_from_name, epic_error, new_id, now_iso
+from .. import accounts
+from ..utils import epic_error, new_id, now_iso
 
 router = APIRouter()
 
@@ -56,6 +57,10 @@ def _client_id(request: Request) -> str:
     return "ec684b8c687f479fadea3cb2ad83f5c6"
 
 
+def _public(acc: dict) -> dict:
+    return {"displayName": acc["displayName"], "accountId": acc["accountId"]}
+
+
 def account_from_request(request: Request) -> dict | None:
     auth = request.headers.get("authorization", "")
     token = auth.split(" ", 1)[-1].replace("eg1~", "")
@@ -87,7 +92,11 @@ async def oauth_token(request: Request):
         }
 
     if grant == "password":
-        name = str(form.get("username", "")).split("@")[0] or "Player"
+        acc = accounts.login(str(form.get("username", "")) or "Player", str(form.get("password", "")))
+        if not acc:
+            return epic_error("errors.com.epicgames.account.invalid_account_credentials",
+                              "Sorry the account credentials you are using are invalid", 400, 18031)
+        name = acc["displayName"]
     elif grant == "exchange_code":
         code = str(form.get("exchange_code", ""))
         name = EXCHANGE.pop(code, None) or code or "Player"
@@ -98,13 +107,17 @@ async def oauth_token(request: Request):
                               "Invalid refresh token", 400, 18036)
         name = old["displayName"]
     elif grant == "device_auth":
-        name = str(form.get("account_id", "Player"))
+        acc = accounts.get(str(form.get("account_id", "")))
+        if not acc:
+            return epic_error("errors.com.epicgames.account.invalid_account_credentials",
+                              "Sorry the account credentials you are using are invalid", 400, 18031)
+        name = acc["displayName"]
     else:
         return epic_error("errors.com.epicgames.common.oauth.unsupported_grant_type",
                           f"Unsupported grant type: {grant}", 400, 1016)
 
-    name = name[:32]
-    account_id = account_id_from_name(name)
+    acc = accounts.ensure(name)
+    name, account_id = acc["displayName"], acc["accountId"]
     now = int(time.time())
     device = new_id()
     base = {"sub": account_id, "dvid": device, "clid": client_id, "dn": name, "am": grant,
@@ -147,8 +160,7 @@ async def oauth_token(request: Request):
 
 @router.get("/account/api/oauth/verify")
 async def oauth_verify(request: Request):
-    acc = account_from_request(request) or {"displayName": "Player", "accountId": account_id_from_name("Player"),
-                                            "clientId": _client_id(request)}
+    acc = account_from_request(request) or {**_public(accounts.ensure("Player")), "clientId": _client_id(request)}
     token = request.headers.get("authorization", "").split(" ", 1)[-1]
     return {
         "token": token,
@@ -184,17 +196,16 @@ async def kill_session(token: str | None = None):
 
 @router.get("/account/api/public/account/{account_id}")
 async def get_account(account_id: str, request: Request):
-    acc = account_from_request(request)
-    name = acc["displayName"] if acc and acc["accountId"] == account_id else account_id
+    name = accounts.display_name(account_id)
     return {
         "id": account_id,
         "displayName": name,
         "name": name,
-        "email": f"{account_id}@halcyon.local",
+        "email": (accounts.get(account_id) or {}).get("email", f"{account_id}@halcyon.local"),
         "failedLoginAttempts": 0,
         "lastLogin": now_iso(),
         "numberOfDisplayNameChanges": 0,
-        "ageGroup": "UNKNOWN",
+        "ageGroup": "ADULT",
         "headless": False,
         "country": "US",
         "lastName": "Player",
@@ -204,19 +215,25 @@ async def get_account(account_id: str, request: Request):
         "emailVerified": True,
         "minorVerified": False,
         "minorExpected": False,
-        "minorStatus": "UNKNOWN",
+        "minorStatus": "NOT_MINOR",
+        "cabinedMode": False,
+        "hasHashedEmail": False,
     }
 
 
 @router.get("/account/api/public/account")
 async def get_accounts(request: Request):
     ids = request.query_params.getlist("accountId")
-    return [{"id": i, "displayName": i, "externalAuths": {}} for i in ids]
+    return [{"id": i, "displayName": accounts.display_name(i), "externalAuths": {}} for i in ids]
 
 
 @router.get("/account/api/public/account/displayName/{name}")
 async def get_by_name(name: str):
-    return {"id": account_id_from_name(name), "displayName": name, "externalAuths": {}}
+    acc = accounts.by_name(name)
+    if not acc:
+        return epic_error("errors.com.epicgames.account.account_not_found",
+                          f"Sorry, we couldn't find an account for {name}", 404, 18007, [name])
+    return {"id": acc["accountId"], "displayName": acc["displayName"], "externalAuths": {}}
 
 
 @router.get("/account/api/public/account/{account_id}/externalAuths")

@@ -1,14 +1,31 @@
+import asyncio
+
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket
 from starlette.exceptions import HTTPException
 
 from .profiles import load_cosmetics
-from .routes import auth, content, eos, matchmaking, mcp, misc
+from . import stomp, xmpp
+from .routes import auth, chat, content, discovery, eos, images, locker, matchmaking, mcp, misc, social
 from .utils import CONFIG, ROOT, epic_error
 
 app = FastAPI(title="Halcyon Dev Backend", docs_url=None, redoc_url=None)
-for r in (auth, eos, mcp, content, misc, matchmaking):
+# Social first so it wins over the older stubs
+for r in (social, chat, auth, eos, locker, discovery, images, mcp, content, misc, matchmaking):
     app.include_router(r.router)
+
+
+@app.websocket("/{path:path}")
+async def sockets(ws: WebSocket, path: str):
+    # Every Epic socket lands here through the proxy, the subprotocol says which one it is
+    protocols = [p.strip() for p in ws.headers.get("sec-websocket-protocol", "").split(",") if p.strip()]
+    print(f"[Socket] /{path} protocols={protocols}")
+    if "xmpp" in protocols or not protocols:
+        await xmpp.serve(ws)
+    elif any("stomp" in p for p in protocols) or path.strip("/") in ("", "v2") or "notifications" in path:
+        await stomp.serve(ws, protocols)
+    else:
+        await ws.close(code=1008)  # lobby and cerberus sockets are not served
 
 
 LOG = open(ROOT / "requests.log", "a", buffering=1, encoding="utf-8")
@@ -42,7 +59,23 @@ async def startup():
 
 
 def run():
-    uvicorn.run(app, host=CONFIG["host"], port=CONFIG["port"], log_level="warning")
+    # The game's XMPP client dials ws://127.0.0.1 on port 80, so listen there too
+    ports = [CONFIG["port"]] + [p for p in CONFIG.get("extraPorts", [80]) if p != CONFIG["port"]]
+    servers = [uvicorn.Server(uvicorn.Config(app, host=CONFIG["host"], port=p, log_level="warning")) for p in ports]
+    for s in servers[1:]:
+        s.install_signal_handlers = lambda: None
+
+    async def serve_all():
+        await asyncio.gather(*(_serve(s) for s in servers))
+
+    asyncio.run(serve_all())
+
+
+async def _serve(server):
+    try:
+        await server.serve()
+    except SystemExit:
+        print(f"[Backend] Could not listen on port {server.config.port} (in use or needs admin)")
 
 
 if __name__ == "__main__":

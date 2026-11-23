@@ -1,8 +1,11 @@
+import json
 import time
 
 from fastapi import APIRouter, Request
+from fastapi.responses import Response
 
-from ..utils import account_id_from_name, new_id, now_iso
+from .. import accounts
+from ..utils import DATA, new_id, now_iso
 from .auth import _expiry, account_from_request, make_jwt, read_jwt
 
 router = APIRouter()
@@ -22,8 +25,8 @@ async def _account(request: Request) -> dict:
     if acc:
         return acc
     from .auth import EXCHANGE
-    name = EXCHANGE.get(str(form.get("exchange_code", "")), "Player")
-    return {"accountId": account_id_from_name(name), "displayName": name}
+    acc = accounts.ensure(EXCHANGE.get(str(form.get("exchange_code", "")), "Player"))
+    return {"accountId": acc["accountId"], "displayName": acc["displayName"]}
 
 
 CLIENT_ID = "ec684b8c687f479fadea3cb2ad83f5c6"
@@ -118,39 +121,22 @@ async def eos_logout(rest: str = ""):
 @router.get("/epic/id/v2/sdk/accounts")
 async def sdk_accounts(request: Request):
     ids = request.query_params.getlist("accountId")
-    return [{"accountId": i, "displayName": i, "preferredLanguage": "en", "linkedAccounts": [],
+    return [{"accountId": i, "displayName": accounts.display_name(i), "preferredLanguage": "en", "linkedAccounts": [],
              "cabinedMode": False, "empty": False} for i in ids]
 
 
 @router.post("/user/v9/product-users/search")
 async def product_users(request: Request):
+    # Product user ids are account ids here
     body = await request.json()
-    acc = account_from_request(request) or {}
-    return {"productUsers": {pid: {"accounts": [{"accountId": acc.get("accountId", pid),
-                                                 "displayName": acc.get("displayName", pid),
+    return {"productUsers": {pid: {"accounts": [{"accountId": pid, "displayName": accounts.display_name(pid),
                                                  "identityProviderId": "epicgames", "lastLogin": now_iso()}]}
                              for pid in body.get("productUserIds", [])}}
-
-
-@router.get("/epic/friends/v1/{account_id}/blocklist")
-async def eos_blocklist(account_id: str):
-    return {"blockedUsers": []}
 
 
 @router.patch("/epic/presence/v1/{ns}/{account_id}/presence/{presence_id}")
 async def eos_presence(ns: str, account_id: str, presence_id: str):
     return {"own": {"accountId": account_id, "status": "online", "perNs": []}, "connections": []}
-
-
-@router.get("/epic/chat/v1/public/_/users/{account_id}/summary")
-async def chat_summary(account_id: str):
-    return {"conversationCount": 0, "unreadMessages": 0, "unreadPendingInvites": 0,
-            "hasMoreUnreadMessages": False, "hasMoreUnreadPendingInvites": False}
-
-
-@router.get("/epic/chat/v1/public/_/users/hybrid/conversations")
-async def chat_conversations():
-    return {"conversations": []}
 
 
 @router.get("/epic/party/internal/v2/users/{account_id}")
@@ -161,3 +147,33 @@ async def eos_party(account_id: str):
 @router.post("/datarouter/api/v1/public/data/clients")
 async def datarouter_clients():
     return {}
+
+
+TEMPLATES = DATA / "templates"
+
+
+# Supervised settings, login fails without these
+@router.get("/v1/epic-settings/public/users/{account_id}/{rest:path}")
+@router.patch("/v1/epic-settings/public/users/{account_id}/{rest:path}")
+async def epic_settings(account_id: str, rest: str):
+    data = json.loads((TEMPLATES / "epic_settings.json").read_text(encoding="utf-8"))
+    # Drop parent limits so the account reads as unsupervised
+    for setting in data["response"]["settings"]:
+        for key in [k for k in setting if k.startswith("parentLimit")]:
+            del setting[key]
+    return data
+
+
+@router.options("/v1/epic-settings/public/users/{account_id}/{rest:path}")
+async def epic_settings_options(account_id: str, rest: str):
+    return Response(status_code=204)
+
+
+@router.post("/epic/socs/v1/users/{account_id}/settings/query")
+async def socs_settings(account_id: str):
+    return json.loads((TEMPLATES / "socs_settings.json").read_text(encoding="utf-8"))
+
+
+@router.post("/epic/oauth/v2/revoke")
+async def eos_revoke():
+    return Response(status_code=204)

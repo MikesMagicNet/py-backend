@@ -3,3 +3,6 @@ __pycache__/
 requests.log
 datarouter.log
 eos.log
+xmpp.log
+stomp.log
+chat.log
