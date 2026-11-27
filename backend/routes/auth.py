@@ -10,6 +10,7 @@ from fastapi.responses import Response
 
 from .. import accounts
 from ..utils import epic_error, new_id, now_iso
+from ..log import log, user
 
 router = APIRouter()
 
@@ -117,6 +118,10 @@ async def oauth_token(request: Request):
                           f"Unsupported grant type: {grant}", 400, 1016)
 
     acc = accounts.ensure(name)
+    if acc.get("banned"):
+        log("Ban", f"{user(acc['displayName'])} tried to log in while banned", "warn")
+        return epic_error("errors.com.epicgames.account.account_not_active",
+                          "This account is banned" + (f": {acc['banReason']}" if acc.get("banReason") else ""), 400, 18007)
     name, account_id = acc["displayName"], acc["accountId"]
     now = int(time.time())
     device = new_id()
@@ -130,7 +135,7 @@ async def oauth_token(request: Request):
     info = {"displayName": name, "accountId": account_id, "clientId": client_id}
     TOKENS[access] = info
     TOKENS[refresh] = info
-    print(f"[Auth] {name} logged in ({grant})")
+    log("Auth", f"{user(name)} logged in ({grant})", "good")
 
     return {
         "access_token": f"eg1~{access}",

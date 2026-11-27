@@ -4,7 +4,7 @@ import time
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
-from .. import accounts
+from .. import accounts, presence, stomp
 from ..utils import DATA, new_id, now_iso
 from .auth import _expiry, account_from_request, make_jwt, read_jwt
 
@@ -75,7 +75,8 @@ async def eos_token_info(request: Request):
             "client_id": "ec684b8c687f479fadea3cb2ad83f5c6", "application_id": APP_ID}
 
 
-FEATURES = ["AntiCheat", "Connect", "ContentService", "Ecom", "EpicConnect", "Inventories", "LockerService",
+# No AntiCheat: with it the SDK expects EAC, and queueing without it ends in the "corrupted data" popup
+FEATURES = ["Connect", "ContentService", "Ecom", "EpicConnect", "Inventories", "LockerService",
             "Matchmaking Service", "ExchangeCodeCreation", "Achievements", "Leaderboards", "Matchmaking", "Metrics",
             "PlayerReports", "Sanctions", "Stats", "TitleStorage", "Voice", "CommerceService", "FNResonanceService",
             "MagpieService", "PCBService", "QuestService"]
@@ -134,14 +135,53 @@ async def product_users(request: Request):
                              for pid in body.get("productUserIds", [])}}
 
 
+def _conn_id(presence_id: str) -> str:
+    # "<connectionId>#sub-eas-..." (the # arrives url-decoded)
+    return presence_id.split("#")[0].split("%23")[0]
+
+
 @router.patch("/epic/presence/v1/{ns}/{account_id}/presence/{presence_id}")
-async def eos_presence(ns: str, account_id: str, presence_id: str):
-    return {"own": {"accountId": account_id, "status": "online", "perNs": []}, "connections": []}
+async def eos_presence(ns: str, account_id: str, presence_id: str, request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    cid = _conn_id(presence_id)
+    stomp.bind(cid, account_id)
+    view, came_online = presence.set_presence(account_id, ns, cid, body if isinstance(body, dict) else {})
+    await presence.broadcast(account_id)
+    if came_online:
+        await presence.send_friends_to(account_id)
+    return {"own": view, "connections": [{"id": cid, "props": {}}]}
 
 
-@router.get("/epic/party/internal/v2/users/{account_id}")
-async def eos_party(account_id: str):
-    return {"invites": [], "join_requests": []}
+@router.delete("/epic/presence/v1/{ns}/{account_id}/presence/{presence_id}")
+async def eos_presence_delete(ns: str, account_id: str, presence_id: str):
+    presence.clear(account_id, _conn_id(presence_id))
+    await presence.broadcast(account_id)
+    return Response(status_code=204)
+
+
+@router.get("/epic/presence/v1/{ns}/{account_id}/presence")
+@router.get("/epic/presence/v1/{ns}/{account_id}/presence/{presence_id}")
+async def eos_presence_get(ns: str, account_id: str, presence_id: str = ""):
+    return presence.view(account_id)
+
+
+@router.post("/epic/presence/v1/{ns}/_/presence")
+@router.get("/epic/presence/v1/{ns}/{account_id}/subscriptions")
+async def eos_presence_query(ns: str, request: Request, account_id: str = ""):
+    ids = request.query_params.getlist("accountId")
+    if not ids and request.method == "POST":
+        try:
+            body = await request.json()
+            ids = body.get("accountIds", []) if isinstance(body, dict) else list(body)
+        except Exception:
+            ids = []
+    if not ids and account_id:
+        from ..social import Friends
+        ids = list(Friends.of(account_id)["friends"])
+    return [presence.view(i) for i in ids]
 
 
 @router.post("/datarouter/api/v1/public/data/clients")

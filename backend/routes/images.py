@@ -4,7 +4,9 @@ import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
+from ..profiles import IMAGES
 from ..utils import DATA
+from ..log import log, user
 
 router = APIRouter()
 CACHE = DATA / "cache" / "images"
@@ -32,8 +34,9 @@ async def item_image(rest: str, request: Request):
         return _png(cached.read_bytes())
 
     async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
-        for url in (f"https://fortnite-api.com/images/cosmetics/br/{cosmetic}/icon.png",
-                    f"https://fortnite-api.com/images/cosmetics/br/{cosmetic}/smallicon.png"):
+        known = IMAGES.get(cosmetic.lower())
+        for url in ([known] if known else []) + [f"https://fortnite-api.com/images/cosmetics/br/{cosmetic}/icon.png",
+                    f"https://fortnite-api.com/images/cosmetics/br/{cosmetic}/smallicon.png"]:
             try:
                 r = await client.get(url)
                 if r.status_code == 200 and len(r.content) > 500:
@@ -41,4 +44,28 @@ async def item_image(rest: str, request: Request):
                     return _png(r.content)
             except httpx.HTTPError:
                 pass
+    log("Images", f"No icon for {cosmetic} ({kind})")
     return _png(FALLBACK.read_bytes())
+
+
+# Lobby backgrounds in the link data point at localhost/cdn2-unrealengine/<file>, mirrored from cdn2.unrealengine.com
+BG_CACHE = DATA / "cache" / "cdn2"
+
+
+@router.get("/cdn2-unrealengine/{name:path}")
+async def cdn2(name: str):
+    name = name.replace("..", "").lstrip("/")
+    media = "image/png" if name.lower().endswith(".png") else "image/jpeg"
+    cached = BG_CACHE / name.replace("/", "_")
+    if not cached.exists():
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+            try:
+                r = await client.get(f"https://cdn2.unrealengine.com/{name}")
+            except httpx.HTTPError:
+                r = None
+        if r is None or r.status_code != 200:
+            return Response(status_code=404)
+        BG_CACHE.mkdir(parents=True, exist_ok=True)
+        cached.write_bytes(r.content)
+    data = cached.read_bytes()
+    return Response(data, media_type=media, headers={"Content-Length": str(len(data))})

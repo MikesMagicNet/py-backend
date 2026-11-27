@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request
 from .. import catalog
 from ..profiles import get_profile, save_profile
 from ..utils import epic_error, new_id, now_iso
+from ..log import log, user
 
 router = APIRouter()
 
@@ -242,7 +243,7 @@ async def mcp(account_id: str, route: str, operation: str, request: Request):
         except ValueError as e:
             return epic_error("errors.com.epicgames.modules.gamesubcatalog.purchase_not_allowed", str(e), 400, 28004)
     elif operation not in ("QueryProfile", "ClientQuestLogin", "RefreshExpeditions", "SetReceiveGiftsEnabled"):
-        print(f"[MCP] Unhandled operation {operation} ({profile_id})")
+        log("MCP", f"Unhandled operation {operation} ({profile_id})")
 
     if ch.list:
         profile["rvn"] += 1

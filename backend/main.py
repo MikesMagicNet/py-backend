@@ -5,13 +5,14 @@ from fastapi import FastAPI, Request, WebSocket
 from starlette.exceptions import HTTPException
 
 from .profiles import load_cosmetics
-from . import stomp, xmpp
-from .routes import auth, chat, content, discovery, eos, images, locker, matchmaking, mcp, misc, social
+from . import matchmaker, presence, stomp, xmpp  # noqa: F401 (presence hooks stomp)
+from .routes import auth, chat, content, discovery, eos, eosmatchmaking, images, locker, matchmaking, mcp, misc, social
 from .utils import CONFIG, ROOT, epic_error
+from .log import log, user
 
 app = FastAPI(title="Halcyon Dev Backend", docs_url=None, redoc_url=None)
 # Social first so it wins over the older stubs
-for r in (social, chat, auth, eos, locker, discovery, images, mcp, content, misc, matchmaking):
+for r in (social, chat, auth, eos, locker, discovery, images, mcp, content, misc, matchmaking, eosmatchmaking):
     app.include_router(r.router)
 
 
@@ -19,7 +20,7 @@ for r in (social, chat, auth, eos, locker, discovery, images, mcp, content, misc
 async def sockets(ws: WebSocket, path: str):
     # Every Epic socket lands here through the proxy, the subprotocol says which one it is
     protocols = [p.strip() for p in ws.headers.get("sec-websocket-protocol", "").split(",") if p.strip()]
-    print(f"[Socket] /{path} protocols={protocols}")
+    log("Socket", f"/{path} protocols={protocols}")
     if "xmpp" in protocols or not protocols:
         await xmpp.serve(ws)
     elif any("stomp" in p for p in protocols) or path.strip("/") in ("", "v2") or "notifications" in path:
@@ -51,7 +52,7 @@ async def log_requests(request: Request, call_next):
 @app.exception_handler(HTTPException)
 async def not_found(request: Request, exc: HTTPException):
     if exc.status_code == 404 and CONFIG.get("logUnknownRoutes", True):
-        print(f"[Missing] {request.method} {request.url.path}")
+        log("Missing", f"{request.method} {request.url.path}", "warn")
     return epic_error("errors.com.epicgames.common.not_found",
                       "Sorry the resource you were trying to find could not be found", exc.status_code, 1004)
 
@@ -59,7 +60,10 @@ async def not_found(request: Request, exc: HTTPException):
 @app.on_event("startup")
 async def startup():
     load_cosmetics()
-    print(f"[Backend] Listening on {CONFIG['host']}:{CONFIG['port']}")
+    # startup runs once per listening port, the queue loop only once
+    if not getattr(app.state, "matchmaker", None):
+        app.state.matchmaker = asyncio.create_task(matchmaker.run())
+    log("Backend", f"Listening on {CONFIG['host']}:{CONFIG['port']}")
 
 
 def run():
@@ -70,7 +74,8 @@ def run():
         s.install_signal_handlers = lambda: None
 
     async def serve_all():
-        await asyncio.gather(*(_serve(s) for s in servers))
+        from . import bot
+        await asyncio.gather(*(_serve(s) for s in servers), bot.start())
 
     asyncio.run(serve_all())
 
@@ -79,7 +84,7 @@ async def _serve(server):
     try:
         await server.serve()
     except SystemExit:
-        print(f"[Backend] Could not listen on port {server.config.port} (in use or needs admin)")
+        log("Backend", f"Could not listen on port {server.config.port} (in use or needs admin)", "error")
 
 
 if __name__ == "__main__":

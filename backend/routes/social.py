@@ -6,6 +6,7 @@ from .. import accounts, xmpp
 from ..social import Friends, Parties
 from ..utils import epic_error, now_iso
 from .auth import account_from_request
+from ..log import log, user
 
 router = APIRouter()
 P = "/party/api/v1/{ns}"
@@ -126,7 +127,7 @@ async def friend_add(account_id: str, friend_id: str):
     if result in errors:
         code, msg, num = errors[result]
         return epic_error(code, msg, 409 if result.startswith("already") else 400, num, [friend_id])
-    print(f"[Friends] {accounts.display_name(account_id)} -> {accounts.display_name(friend_id)}: {result}")
+    log("Friends", f"{accounts.cname(account_id)} -> {accounts.cname(friend_id)}: {result}")
     await xmpp.friend_added(account_id, friend_id, result)
     return Response(status_code=204)
 
@@ -139,7 +140,7 @@ async def friend_remove(account_id: str, friend_id: str):
     if not kind:
         return epic_error("errors.com.epicgames.friends.friendship_not_found",
                           f"Friendship between {account_id} and {friend_id} does not exist", 404, 14004)
-    print(f"[Friends] {accounts.display_name(account_id)} removed {accounts.display_name(friend_id)} ({kind})")
+    log("Friends", f"{accounts.cname(account_id)} removed {accounts.cname(friend_id)} ({kind})")
     await xmpp.friend_removed(account_id, friend_id, kind)
     return Response(status_code=204)
 
@@ -211,7 +212,7 @@ async def user_search(account_id: str, request: Request):
 
 
 @router.get("/v1/avatar/{ns}/ids")
-async def avatars(ns: str, request: Request):
+async def avatars(*, ns: str = "Fortnite", request: Request):
     ids = [i for i in request.query_params.get("accountIds", "").split(",") if i]
     return [{"accountId": i, "namespace": ns, "avatarId": "ATHENACHARACTER:cid_001_athena_commando_f_default"}
             for i in ids]
@@ -249,47 +250,48 @@ async def _leave(account_id: str, kicked_by: str | None = None):
 
 
 @router.get(P + "/user/{account_id}")
-async def party_user(ns: str, account_id: str):
+async def party_user(*, ns: str = "Fortnite", account_id: str):
     party = Parties.of_member(account_id)
     pending = [p for p in Parties.parties.values()
                if any(a["account_id"] == account_id for a in p["applicants"])]
     return {"current": [party] if party else [], "pending": pending,
-            "invites": Parties.invites_for(account_id), "pings": Parties.pings_for(account_id)}
+            "invites": Parties.invites_for(account_id), "pings": Parties.pings_for(account_id),
+            "join_requests": Parties.intentions.get(account_id, [])}
 
 
 @router.get(P + "/user/{account_id}/settings/privacy")
-async def party_privacy(ns: str, account_id: str):
+async def party_privacy(*, ns: str = "Fortnite", account_id: str):
     return {"receiveInvites": "ALL", "receiveIntentions": "ALL"}
 
 
 @router.put(P + "/user/{account_id}/settings/privacy")
-async def party_privacy_put(ns: str, account_id: str, request: Request):
+async def party_privacy_put(*, ns: str = "Fortnite", account_id: str, request: Request):
     return {"receiveInvites": "ALL", "receiveIntentions": "ALL", **(await _json(request))}
 
 
 @router.get(P + "/user/{account_id}/notifications/undelivered/count")
-async def party_undelivered(ns: str, account_id: str):
+async def party_undelivered(*, ns: str = "Fortnite", account_id: str):
     return {"pings": len(Parties.pings_for(account_id)), "invites": len(Parties.invites_for(account_id))}
 
 
 @router.post(P + "/parties")
-async def party_create(ns: str, request: Request):
+async def party_create(*, ns: str = "Fortnite", request: Request):
     body = await _json(request)
     party, left = Parties.create(body)
     leader = party["members"][0]["account_id"]
     if left and left["party"]:
         await xmpp.member_left(left, leader)
-    print(f"[Party] {accounts.display_name(leader)} created {party['id']}")
+    log("Party", f"{accounts.cname(leader)} created {party['id']}")
     return party
 
 
 @router.get(P + "/parties/{party_id}")
-async def party_get(ns: str, party_id: str):
+async def party_get(*, ns: str = "Fortnite", party_id: str):
     return Parties.get(party_id) or _party_error(party_id)
 
 
 @router.patch(P + "/parties/{party_id}")
-async def party_patch(ns: str, party_id: str, request: Request):
+async def party_patch(*, ns: str = "Fortnite", party_id: str, request: Request):
     party = Parties.get(party_id)
     if not party:
         return _party_error(party_id)
@@ -303,7 +305,7 @@ async def party_patch(ns: str, party_id: str, request: Request):
 
 
 @router.delete(P + "/parties/{party_id}")
-async def party_delete(ns: str, party_id: str):
+async def party_delete(*, ns: str = "Fortnite", party_id: str):
     party = Parties.get(party_id)
     if not party:
         return _party_error(party_id)
@@ -313,7 +315,7 @@ async def party_delete(ns: str, party_id: str):
 
 
 @router.patch(P + "/parties/{party_id}/members/{account_id}/meta")
-async def member_meta(ns: str, party_id: str, account_id: str, request: Request):
+async def member_meta(*, ns: str = "Fortnite", party_id: str, account_id: str, request: Request):
     party = Parties.get(party_id)
     if not party:
         return _party_error(party_id)
@@ -327,7 +329,7 @@ async def member_meta(ns: str, party_id: str, account_id: str, request: Request)
 
 @router.post(P + "/parties/{party_id}/members/{account_id}/join")
 @router.post(P + "/parties/{party_id}/members/{account_id}")
-async def member_join(ns: str, party_id: str, account_id: str, request: Request):
+async def member_join(*, ns: str = "Fortnite", party_id: str, account_id: str, request: Request):
     party = Parties.get(party_id)
     if not party:
         return _party_error(party_id)
@@ -362,12 +364,12 @@ async def _join(party: dict, account_id: str, connection: dict | None, meta: dic
     for m in party["members"]:
         Parties.clear_ping(account_id, m["account_id"])
         Parties.clear_intention(m["account_id"], account_id)
-    print(f"[Party] {accounts.display_name(account_id)} joined {party['id']}")
+    log("Party", f"{accounts.cname(account_id)} joined {party['id']}")
     await xmpp.member_joined(party, member)
 
 
 @router.post(P + "/parties/{party_id}/members/{account_id}/confirm")
-async def member_confirm(ns: str, party_id: str, account_id: str):
+async def member_confirm(*, ns: str = "Fortnite", party_id: str, account_id: str):
     party = Parties.get(party_id)
     if not party:
         return _party_error(party_id)
@@ -379,7 +381,7 @@ async def member_confirm(ns: str, party_id: str, account_id: str):
 
 
 @router.post(P + "/parties/{party_id}/members/{account_id}/reject")
-async def member_reject(ns: str, party_id: str, account_id: str):
+async def member_reject(*, ns: str = "Fortnite", party_id: str, account_id: str):
     party = Parties.get(party_id)
     if not party:
         return _party_error(party_id)
@@ -390,7 +392,7 @@ async def member_reject(ns: str, party_id: str, account_id: str):
 
 
 @router.delete(P + "/parties/{party_id}/members/{account_id}")
-async def member_leave(ns: str, party_id: str, account_id: str, request: Request):
+async def member_leave(*, ns: str = "Fortnite", party_id: str, account_id: str, request: Request):
     party = Parties.get(party_id)
     if not party:
         return _party_error(party_id)
@@ -403,7 +405,7 @@ async def member_leave(ns: str, party_id: str, account_id: str, request: Request
 
 
 @router.post(P + "/parties/{party_id}/members/{account_id}/promote")
-async def member_promote(ns: str, party_id: str, account_id: str):
+async def member_promote(*, ns: str = "Fortnite", party_id: str, account_id: str):
     party = Parties.get(party_id)
     if not party:
         return _party_error(party_id)
@@ -414,18 +416,18 @@ async def member_promote(ns: str, party_id: str, account_id: str):
 
 
 @router.post(P + "/parties/{party_id}/members/{account_id}/conferences/connection")
-async def voice_connection(ns: str, party_id: str, account_id: str):
+async def voice_connection(*, ns: str = "Fortnite", party_id: str, account_id: str):
     return {"providers": {}}
 
 
 @router.post(P + "/parties/{party_id}/invites/{account_id}")
-async def invite(ns: str, party_id: str, account_id: str, request: Request):
+async def invite(*, ns: str = "Fortnite", party_id: str, account_id: str, request: Request):
     party = Parties.get(party_id)
     if not party:
         return _party_error(party_id)
     sent_by = _caller(request) or (Parties.captain(party) or {}).get("account_id", "")
     inv = Parties.invite(party, sent_by, account_id, await _json(request))
-    print(f"[Party] {accounts.display_name(sent_by)} invited {accounts.display_name(account_id)}")
+    log("Party", f"{accounts.cname(sent_by)} invited {accounts.cname(account_id)}")
     await xmpp.party_invite(party, inv)
     if request.query_params.get("sendPing", "").lower() == "true":
         ping = Parties.ping(sent_by, account_id)
@@ -434,7 +436,7 @@ async def invite(ns: str, party_id: str, account_id: str, request: Request):
 
 
 @router.delete(P + "/parties/{party_id}/invites/{account_id}")
-async def invite_cancel(ns: str, party_id: str, account_id: str, request: Request):
+async def invite_cancel(*, ns: str = "Fortnite", party_id: str, account_id: str, request: Request):
     party = Parties.get(party_id)
     if not party:
         return _party_error(party_id)
@@ -444,7 +446,7 @@ async def invite_cancel(ns: str, party_id: str, account_id: str, request: Reques
 
 
 @router.post(P + "/parties/{party_id}/invites/{account_id}/decline")
-async def invite_decline(ns: str, party_id: str, account_id: str):
+async def invite_decline(*, ns: str = "Fortnite", party_id: str, account_id: str):
     party = Parties.get(party_id)
     if not party:
         return _party_error(party_id)
@@ -458,26 +460,26 @@ async def invite_decline(ns: str, party_id: str, account_id: str):
 # Pings: "invite me" from a friend, and the friend's party lookup
 
 @router.post(P + "/user/{account_id}/pings/{pinger_id}")
-async def ping(ns: str, account_id: str, pinger_id: str, request: Request):
+async def ping(*, ns: str = "Fortnite", account_id: str, pinger_id: str, request: Request):
     entry = Parties.ping(pinger_id, account_id, await _json(request))
     await xmpp.party_ping(pinger_id, account_id, entry)
     return entry
 
 
 @router.delete(P + "/user/{account_id}/pings/{pinger_id}")
-async def ping_delete(ns: str, account_id: str, pinger_id: str):
+async def ping_delete(*, ns: str = "Fortnite", account_id: str, pinger_id: str):
     Parties.clear_ping(account_id, pinger_id)
     return Response(status_code=204)
 
 
 @router.get(P + "/user/{account_id}/pings/{pinger_id}/parties")
-async def ping_parties(ns: str, account_id: str, pinger_id: str):
+async def ping_parties(*, ns: str = "Fortnite", account_id: str, pinger_id: str):
     party = Parties.of_member(pinger_id)
     return [party] if party else []
 
 
 @router.post(P + "/user/{account_id}/pings/{pinger_id}/join")
-async def ping_join(ns: str, account_id: str, pinger_id: str, request: Request):
+async def ping_join(*, ns: str = "Fortnite", account_id: str, pinger_id: str, request: Request):
     party = Parties.of_member(pinger_id)
     if not party:
         return _party_error()
@@ -489,7 +491,7 @@ async def ping_join(ns: str, account_id: str, pinger_id: str, request: Request):
 # Request to join: requester asks a friend to be let into their party
 
 @router.post(P + "/members/{first}/intentions/{second}")
-async def intention(ns: str, first: str, second: str, request: Request):
+async def intention(*, ns: str = "Fortnite", first: str, second: str, request: Request):
     caller = _caller(request)
     # Path order differs between builds, the token says who is asking
     requester, requestee = (first, second) if caller == first else (second, first)
@@ -497,13 +499,22 @@ async def intention(ns: str, first: str, second: str, request: Request):
         return epic_error("errors.com.epicgames.social.party.intention_forbidden",
                           "You can only request to join friends", 403, 51024)
     entry = Parties.intention(requester, requestee, await _json(request))
-    print(f"[Party] {accounts.display_name(requester)} asked to join {accounts.display_name(requestee)}")
+    log("Party", f"{accounts.cname(requester)} asked to join {accounts.cname(requestee)}")
     await xmpp.party_intention(entry)
     return {**entry, "requester_dn": accounts.display_name(requester),
             "requestee_dn": accounts.display_name(requestee)}
 
 
 @router.get(P + "/members/{account_id}/intentions")
-async def intentions_list(ns: str, account_id: str):
+async def intentions_list(*, ns: str = "Fortnite", account_id: str):
     return Parties.intentions.get(account_id, [])
 
+
+
+# EOS builds talk to the same party service under /epic/party/v2/{deployment} and /epic/party/internal/v2
+for _route in list(router.routes):
+    if getattr(_route, "path", "").startswith(P):
+        _rest = _route.path[len(P):]
+        for _prefix in ("/epic/party/v2/{ns}", "/epic/party/internal/v2"):
+            for _path in {_rest, _rest.replace("/user/", "/users/", 1)}:
+                router.add_api_route(_prefix + _path, _route.endpoint, methods=list(_route.methods))

@@ -7,6 +7,23 @@
     "ip": "127.0.0.1",
     "port": 7777
   },
+  "epicConnect": true,
+  "matchmaker": {
+    "serverTimeoutSec": 15,
+    "reserveTimeoutSec": 90,
+    "matchRegion": false
+  },
   "logUnknownRoutes": true,
-  "autoCreateAccounts": true
+  "autoCreateAccounts": false,
+  "discord": {
+    "token": "MTU3NDY5MzYyMTYzNzA2MjY4OA.G-nT9I.fxqmuyPSC7wvsS-SPxCJfvOy39-LZBp_8bL024",
+    "guildId": 0,
+    "devRoleIds": [
+      1572279548253315193
+    ],
+    "devUserIds": [
+      1469539192962023527
+    ]
+  },
+  "publicHost": "127.0.0.1"
 }

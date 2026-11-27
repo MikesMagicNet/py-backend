@@ -3,7 +3,7 @@ import hashlib
 import json
 
 from fastapi import APIRouter, Request
-from fastapi.responses import PlainTextResponse, Response
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 from .. import catalog
 from ..utils import CONFIG, ROOT, DATA, get_version, new_id, now_iso
@@ -66,8 +66,15 @@ async def timeline(request: Request):
 
 # Cloudstorage
 
-def _file_entry(path, unique):
+def _system_bytes(path) -> bytes:
+    # The XMPP address in the ini has to be the backend's public address once it runs on a VPS
     data = path.read_bytes()
+    host = CONFIG.get("publicHost", "127.0.0.1")
+    return data.replace(b'ServerAddr="ws://127.0.0.1"', f'ServerAddr="ws://{host}"'.encode())
+
+
+def _file_entry(path, unique):
+    data = _system_bytes(path) if path.suffix == ".ini" else path.read_bytes()
     return {"uniqueFilename": unique, "filename": path.name, "hash": hashlib.sha1(data).hexdigest(),
             "hash256": hashlib.sha256(data).hexdigest(), "length": len(data), "contentType": "application/octet-stream",
             "uploaded": now_iso(), "storageType": "S3", "storageIds": {}, "doNotCache": True}
@@ -98,7 +105,7 @@ async def system_file(name: str):
     p = CLOUD / name
     if p.parent != CLOUD or not p.exists():
         return Response(status_code=200)
-    return Response(p.read_bytes(), media_type="application/octet-stream")
+    return Response(_system_bytes(p), media_type="application/octet-stream")
 
 
 @router.get("/fortnite/api/cloudstorage/user/{account_id}")
@@ -340,13 +347,50 @@ async def lobby_no_content():
     return Response(status_code=204)
 
 
-@router.get("/api/inventory/v3/{deployment_id}/players/{account_id}/{name}")
-async def player_inventory(deployment_id: str, account_id: str, name: str):
-    return {"accountId": account_id, "items": {}, "stash": {}}
+# EOS player inventories (island save data such as POIDiscoveryPlayerPersistence). A 404 reads as EOS_NotFound
+# and the old {"items": ...} stub as EOS_UnrecognizedResponse; both fail the save load before a match.
+# Field names come from the EOS SDK strings (player, inventoryName, versionId, dateCreated, data).
+INVENTORIES = DATA / "inventories"
 
 
+def _inv_path(account_id: str, name: str):
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", name.strip("/")) or "default"
+    return INVENTORIES / account_id / f"{safe}.json"
+
+
+def _inventory(account_id: str, name: str) -> dict:
+    p = _inv_path(account_id, name)
+    if p.exists():
+        return json.loads(p.read_text(encoding="utf-8"))
+    return {"player": account_id, "inventoryName": name.strip("/"), "versionId": "0",
+            "dateCreated": now_iso(), "data": {}}
+
+
+def _inv_log(request: Request, body: bytes = b""):
+    with open(ROOT / "inventory.log", "ab") as f:
+        f.write(f"{now_iso()} {request.method} {request.url.path}?{request.url.query} "
+                f"headers={ {k: v for k, v in request.headers.items() if k.startswith('x-epic')} } ".encode()
+                + body[:4000] + b"\n")
+
+
+@router.get("/api/inventory/v3/{deployment_id}/players/{account_id}/{name:path}")
+async def player_inventory(deployment_id: str, account_id: str, name: str, request: Request):
+    _inv_log(request)
+    inv = _inventory(account_id, name)
+    return JSONResponse(inv, headers={"x-epic-lock-id": new_id()})
+
+
+@router.api_route("/api/inventory/{version}/{deployment_id}/players", methods=["POST", "PUT", "PATCH"])
+@router.api_route("/api/inventory/{version}/{deployment_id}/players/{rest:path}", methods=["POST", "PUT", "PATCH", "DELETE"])
+async def player_inventory_write(version: str, deployment_id: str, request: Request, rest: str = ""):
+    # Writes, locks and unlocks: logged so the real body shape can be read back, then accepted
+    _inv_log(request, await request.body())
+    return Response(status_code=204)
+
+
+@router.get("/api/v1/games/fortnite/tracks/activeBy/{when}")
 @router.get("/api/v1/games/fortnite/trackprogress/{account_id}")
-async def track_progress(account_id: str):
+async def track_progress(account_id: str = "", when: str = ""):
     return []
 
 
@@ -370,3 +414,17 @@ async def app_installation():
 @router.post("/api/v1/assets/{rest:path}")
 async def assets(rest: str):
     return {"FortCreativeDiscoverySurface": {"meta": {"promotion": 0}, "assets": {}}}
+
+
+# Match/profile verification before queueing: a 404 here is what shows the "unsafe environment" popup
+@router.post("/api/verify/match")
+async def verify_match(request: Request):
+    body = await request.body()
+    with open(ROOT / "matchmaking.log", "ab") as f:
+        f.write(b"verify/match " + body[:2000] + b"\n")
+    return {"verified": True, "result": "ALLOW", "status": "OK"}
+
+
+@router.post("/fortnite/api/game/v2/profileToken/verify/{account_id}")
+async def profile_token_verify(account_id: str):
+    return Response(status_code=204)

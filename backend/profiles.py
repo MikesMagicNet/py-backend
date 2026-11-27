@@ -1,44 +1,87 @@
 import json
 import threading
+import time
 
 import httpx
 
 from .utils import CONFIG, DATA, now_iso
+from .log import log, user
 
 PROFILES_DIR = DATA / "profiles"
 COSMETICS_CACHE = DATA / "cosmetics.json"
+IMAGES_CACHE = DATA / "cosmetic_images.json"
+IMAGES: dict[str, str] = {}  # lowercase cosmetic id -> icon url
 _lock = threading.Lock()
 _cosmetics: dict[str, dict] = {}
 
 
+# fortnite-api.com sections that have no type.backendValue of their own
+SECTION_TYPES = {"tracks": "SparksSong", "beans": "CosmeticMimosa"}
+SKIP_SECTIONS = {"lego"}  # LEGO styles of BR outfits, granted with the outfit
+CACHE_MAX_AGE = 24 * 3600
+
+
+def _variants(c: dict) -> list:
+    out = []
+    for v in c.get("variants") or []:
+        opts = v.get("options") or []
+        if opts:
+            out.append({"channel": v.get("channel"), "active": opts[0]["tag"], "owned": [o["tag"] for o in opts]})
+    return out
+
+
+def _fetch() -> dict[str, dict]:
+    r = httpx.get("https://fortnite-api.com/v2/cosmetics", timeout=120)
+    r.raise_for_status()
+    items = {}
+    for section, entries in r.json()["data"].items():
+        if section in SKIP_SECTIONS or not isinstance(entries, list):
+            continue
+        for c in entries:
+            backend = (c.get("type") or {}).get("backendValue") or SECTION_TYPES.get(section)
+            if not backend or not c.get("id"):
+                continue
+            tid = f"{backend}:{c['id'].lower()}"
+            items[tid] = _item(tid, _variants(c))
+            imgs = c.get("images") or {}
+            url = imgs.get("icon") or imgs.get("smallIcon") or imgs.get("large") or imgs.get("small") or c.get("albumArt")
+            if url:
+                IMAGES[c["id"].lower()] = url
+    return items
+
+
 def load_cosmetics() -> None:
-    """Pull every BR cosmetic from fortnite-api.com once and cache it."""
+    """Every cosmetic (BR, jam tracks, instruments, cars, LEGO kits, beans) from fortnite-api.com, cached a day."""
     global _cosmetics
-    if COSMETICS_CACHE.exists():
-        _cosmetics = json.loads(COSMETICS_CACHE.read_text())
-        print(f"[Cosmetics] Loaded {len(_cosmetics)} items from cache")
+    cached = json.loads(COSMETICS_CACHE.read_text()) if COSMETICS_CACHE.exists() else {}
+    fresh = COSMETICS_CACHE.exists() and time.time() - COSMETICS_CACHE.stat().st_mtime < CACHE_MAX_AGE
+    # Older caches held BR items only, those get refetched
+    if fresh and IMAGES_CACHE.exists() and any(k.startswith("SparksSong:") for k in cached):
+        _cosmetics = cached
+        IMAGES.update(json.loads(IMAGES_CACHE.read_text()))
+        log("Cosmetics", f"Loaded {len(_cosmetics)} items from cache")
         return
     try:
-        r = httpx.get("https://fortnite-api.com/v2/cosmetics/br", timeout=60)
-        r.raise_for_status()
-        items = {}
-        for c in r.json()["data"]:
-            backend = c.get("type", {}).get("backendValue")
-            if not backend:
-                continue
-            variants = []
-            for v in c.get("variants") or []:
-                opts = v.get("options") or []
-                if opts:
-                    variants.append({"channel": v.get("channel"), "active": opts[0]["tag"],
-                                     "owned": [o["tag"] for o in opts]})
-            items[f"{backend}:{c['id'].lower()}"] = _item(f"{backend}:{c['id'].lower()}", variants)
+        _cosmetics = _fetch()
         DATA.mkdir(exist_ok=True)
-        COSMETICS_CACHE.write_text(json.dumps(items))
-        _cosmetics = items
-        print(f"[Cosmetics] Fetched {len(items)} items")
+        COSMETICS_CACHE.write_text(json.dumps(_cosmetics))
+        IMAGES_CACHE.write_text(json.dumps(IMAGES))
+        log("Cosmetics", f"Fetched {len(_cosmetics)} items")
     except Exception as e:
-        print(f"[Cosmetics] Fetch failed, using defaults only: {e}")
+        _cosmetics = cached
+        if IMAGES_CACHE.exists():
+            IMAGES.update(json.loads(IMAGES_CACHE.read_text()))
+        log("Cosmetics", f"Fetch failed, using {len(cached)} cached items: {e}", "error")
+
+
+def _grant_all(profile: dict) -> bool:
+    """Adds cosmetics released since the profile was made. Returns True if anything was added."""
+    added = False
+    for tid, item in _cosmetics.items():
+        if tid not in profile["items"]:
+            profile["items"][tid] = json.loads(json.dumps(item))
+            added = True
+    return added
 
 
 def _item(template_id: str, variants=None, quantity: int = 1) -> dict:
@@ -142,7 +185,10 @@ def get_profile(account_id: str, profile_id: str) -> dict:
     with _lock:
         p = _path(account_id, profile_id)
         if p.exists():
-            return json.loads(p.read_text())
+            profile = json.loads(p.read_text())
+            if profile_id == "athena" and CONFIG.get("everythingUnlocked", True) and _grant_all(profile):
+                p.write_text(json.dumps(profile))
+            return profile
         maker = TEMPLATES.get(profile_id)
         profile = maker(account_id) if maker else _base(profile_id, account_id, {}, {})
         p.parent.mkdir(parents=True, exist_ok=True)

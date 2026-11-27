@@ -10,6 +10,7 @@ from .. import accounts, stomp
 from ..social import Friends
 from ..utils import DATA, ROOT, epic_error, now_iso
 from .auth import account_from_request
+from ..log import log, user
 
 router = APIRouter()
 C = "/epic/chat/v1/public/{ns}"
@@ -94,7 +95,7 @@ async def _post(conv: dict, sender: str, body: dict, kind: str) -> dict:
     conv["messages"] = (conv["messages"] + [msg])[-KEEP:]
     last_read.setdefault(sender, {})[conv["conversationId"]] = msg["msgId"]
     _save()
-    print(f"[Chat] {accounts.display_name(sender)} -> {conv['conversationId']}: {text[:60]}")
+    log("Chat", f"{accounts.cname(sender)} -> {conv['conversationId']}: {text[:60]}")
     for member in conv["members"]:
         if member == sender:
             continue
@@ -294,5 +295,5 @@ async def remove_members(ns: str, cid: str, request: Request, account_id: str = 
 async def chat_unknown(rest: str, request: Request):
     # Logged so missing chat calls show up in chat.log
     await _body(request)
-    print(f"[Chat] unhandled {request.method} /epic/chat/{rest}")
+    log("Chat", f"unhandled {request.method} /epic/chat/{rest}")
     return {}

@@ -111,3 +111,9 @@ def ensure(name: str) -> dict:
 
 
 _load()
+
+
+def cname(account_id: str) -> str:
+    """Display name colored for logs."""
+    from .log import user
+    return user(display_name(account_id))

@@ -8,6 +8,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from . import accounts
 from .routes.auth import read_jwt
 from .utils import ROOT, now_iso
+from .log import log, user
 
 LOG = open(ROOT / "stomp.log", "a", buffering=1, encoding="utf-8")
 
@@ -71,7 +72,7 @@ def bind(connection_id: str, account_id: str):
         conns.get(c.account_id, set()).discard(c)
     c.account_id = account_id
     conns.setdefault(account_id, set()).add(c)
-    print(f"[Connect] {accounts.display_name(account_id)} connected")
+    log("Connect", f"{accounts.cname(account_id)} connected")
 
 
 def _message(c: Conn, sub_id: str, kind: str, payload: dict) -> str:
@@ -94,8 +95,25 @@ async def _send(c: Conn, text: str):
 async def push(account_id: str, kind: str, payload: dict):
     """Sends one Epic Connect message to every connection of an account."""
     for c in list(conns.get(account_id, ())):
-        for sub_id in list(c.subs) or ["sub-0"]:
+        for sub_id in _targets(c, kind):
             await _send(c, _message(c, sub_id, kind, payload))
+
+
+def _targets(c: Conn, kind: str) -> list[str]:
+    """One subscription per message: EOS Connect (productUserId) for matchmaking, the Epic account one otherwise.
+    Sending the same message to every subscription makes the SDK see duplicates."""
+    subs = list(c.subs.items())
+    if not subs:
+        return ["sub-0"]
+    product = [i for i, d in subs if "/productUserId/" in d]
+    account = [i for i, d in subs if "/epicAccountId/" in d and "private" not in i]
+    if kind.startswith("mms/"):
+        return product[:1] or account[:1] or [subs[0][0]]
+    if kind.startswith("presence."):
+        # The friends sidebar listens on its own (private) subscription; updates carry ver so repeats are harmless
+        every = [i for i, d in subs if "/epicAccountId/" in d]
+        return every or [subs[0][0]]
+    return account[:1] or [subs[0][0]]
 
 
 def online(account_id: str) -> bool:
@@ -109,6 +127,7 @@ async def serve(ws: WebSocket, protocols: list[str]):
     account_id = _account(upgrade_auth)
     await ws.accept(subprotocol=proto)
     c = Conn(ws, account_id)
+    close_code = None
     by_id[c.id] = c
     _log("open", account_id, f"protocols={protocols} path={ws.url.path}")
     try:
@@ -129,7 +148,7 @@ async def serve(ws: WebSocket, protocols: list[str]):
                     return
                 if c.account_id:
                     conns.setdefault(c.account_id, set()).add(c)
-                    print(f"[Connect] {accounts.display_name(c.account_id)} connected")
+                    log("Connect", f"{accounts.cname(c.account_id)} connected")
                 await _send(c, _frame("CONNECTED", {"version": "1.2", "heart-beat": "30000,0",
                                                     "server": "halcyon-connect", "session": c.id,
                                                     "connection-id": c.id}))
@@ -151,15 +170,28 @@ async def serve(ws: WebSocket, protocols: list[str]):
                 return
             if "receipt" in headers and command not in ("DISCONNECT",):
                 await _send(c, _frame("RECEIPT", {"receipt-id": headers["receipt"]}))
-    except (WebSocketDisconnect, RuntimeError):
-        pass
+    except WebSocketDisconnect as e:
+        close_code = e.code
+    except RuntimeError:
+        close_code = "runtime"
     finally:
+        _log("close", c.account_id, f"code={close_code} subs={list(c.subs)}")
+        if c.account_id:
+            log("Connect", f"{accounts.cname(c.account_id)} socket closed ({close_code})", "warn")
         by_id.pop(c.id, None)
         group = conns.get(c.account_id)
         if group and c in group:
             group.discard(c)
             if not group:
                 conns.pop(c.account_id, None)
-            print(f"[Connect] {accounts.display_name(c.account_id)} disconnected")
             for hook in on_close:
                 await hook(c.account_id, c.id)
+
+
+async def kick(account_id: str):
+    """Drops every Epic Connect connection of an account (used on ban)."""
+    for c in list(conns.get(account_id, ())):
+        try:
+            await c.ws.close(code=1008)
+        except Exception:
+            pass

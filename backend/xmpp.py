@@ -10,6 +10,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from . import accounts
 from .social import Friends, Parties, iso_in
 from .utils import ROOT, now_iso
+from .log import log, user
 
 DOMAIN = "prod.ol.epicgames.com"
 MUC = f"muc.{DOMAIN}"
@@ -69,6 +70,10 @@ def is_online(account_id: str) -> bool:
 
 
 async def admin_message(account_id: str, body: dict):
+    """Social notification: XMPP admin message, and the same over Epic Connect for EOS builds."""
+    from . import stomp
+    if stomp.online(account_id):
+        await stomp.push(account_id, body.get("type", ""), body)
     text = escape(json.dumps(body, separators=(",", ":")))
     await send_to(account_id, lambda c: f'<message xmlns="jabber:client" from="{ADMIN}" to="{c.jid}" '
                                          f'id="{uuid.uuid4().hex.upper()}"><body>{text}</body></message>')
@@ -99,6 +104,8 @@ async def _friend_presence_to(c: Client):
 
 async def share_presence(a: str, b: str):
     """New friends see each other straight away."""
+    from . import presence
+    await presence.share(a, b)
     for x, y in ((a, b), (b, a)):
         for c in list(clients.get(x, ())):
             if c.ready and c.status is not None:
@@ -106,6 +113,8 @@ async def share_presence(a: str, b: str):
 
 
 async def hide_presence(a: str, b: str):
+    from . import presence
+    await presence.hide(a, b)
     for x, y in ((a, b), (b, a)):
         for c in list(clients.get(x, ())):
             if c.ready:
@@ -168,7 +177,7 @@ async def _handle(c: Client, raw: str):
             c.ready = True
             await _send(c, f'<iq xmlns="jabber:client" type="result" id={quoteattr(iq_id)} to="{c.jid}">'
                            f'<bind xmlns="urn:ietf:params:xml:ns:xmpp-bind"><jid>{c.jid}</jid></bind></iq>')
-            print(f"[XMPP] {accounts.display_name(c.account_id)} connected")
+            log("XMPP", f"{accounts.cname(c.account_id)} connected")
         elif _child(el, "ping") is not None or el.get("type") in ("get", "set"):
             await _send(c, f'<iq xmlns="jabber:client" type="result" id={quoteattr(iq_id)} from="{DOMAIN}" to="{c.jid}"/>')
 
@@ -274,7 +283,7 @@ async def serve(ws: WebSocket):
                 members = rooms.get(room, {})
                 for nick in [n for n, m in members.items() if m is c]:
                     members.pop(nick)
-            print(f"[XMPP] {accounts.display_name(c.account_id)} disconnected")
+            log("XMPP", f"{accounts.cname(c.account_id)} disconnected")
 
 
 # Notifications sent from the REST side
@@ -429,3 +438,12 @@ async def member_requested_join(party: dict, account_id: str, meta: dict):
             "type": PARTY + "MEMBER_REQUIRE_CONFIRMATION", "ns": "Fortnite", "party_id": party["id"],
             "account_id": account_id, "account_dn": _dn(account_id), "member_state_updated": meta or {},
             "joined_at": now_iso(), "updated_at": now_iso(), "revision": party["revision"], "sent": now_iso()})
+
+
+async def kick(account_id: str):
+    """Drops every XMPP connection of an account (used on ban)."""
+    for c in list(clients.get(account_id, ())):
+        try:
+            await c.ws.close(code=1008)
+        except Exception:
+            pass
