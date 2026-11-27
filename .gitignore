@@ -1,4 +1,10 @@
-data/
+data/*
+!data/catalog.json
+!data/lobby_backgrounds.json
+!data/sdk_default.json
+!data/sdk_product.json
+!data/discovery/
+!data/templates/
 __pycache__/
 requests.log
 datarouter.log

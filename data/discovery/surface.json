@@ -1,0 +1,409 @@
+{
+ "panels": [
+  {
+   "panelName": "Homebar",
+   "panelDisplayName": "Homebar",
+   "panelSubtitle": null,
+   "featureTags": [
+    "col:5",
+    "homebar"
+   ],
+   "firstPage": {
+    "results": [
+     {
+      "lastVisited": null,
+      "linkCode": "ref_panel_byepicfeeder_1",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "NONE",
+      "isVisible": true
+     }
+    ],
+    "hasMore": true,
+    "panelTargetName": null,
+    "pageMarker": null
+   },
+   "panelType": "CuratedList",
+   "playHistoryType": null
+  },
+  {
+   "panelName": "ByEpicFeeder",
+   "panelNativeDisplayName": "By Epic",
+   "panelDisplayName": "By Epic",
+   "panelSubtitle": null,
+   "featureTags": [
+    "ForReferenceViewOnly",
+    "col:5",
+    "hasViewAll:true",
+    "horizontalScroll:false"
+   ],
+   "firstPage": {
+    "results": [
+     {
+      "linkCode": "set_br_playlists",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "NONE",
+      "isVisible": true
+     },
+     {
+      "linkCode": "playlist_pilgrimquickplay",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "NONE",
+      "isVisible": true
+     },
+     {
+      "linkCode": "playlist_juno",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "NONE",
+      "isVisible": true
+     },
+     {
+      "linkCode": "playlist_beanstalk",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "NONE",
+      "isVisible": true
+     },
+     {
+      "lastVisited": null,
+      "linkCode": "playlist_papaya",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "NONE",
+      "isVisible": true
+     }
+    ],
+    "hasMore": true,
+    "panelTargetName": null,
+    "pageMarker": null
+   },
+   "panelType": "AnalyticsList",
+   "playHistoryType": null
+  },
+  {
+   "panelName": "FigmentDoofy",
+   "panelDisplayName": "Fortnite OG: Unvaulting Event",
+   "panelSubtitle": "Fortnite OG: Unvaulting Event",
+   "featureTags": [
+    "bannerItemRow"
+   ],
+   "firstPage": {
+    "results": [
+     {
+      "lastVisited": null,
+      "linkCode": "playlist_figment_doofy",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "RATING_THRESHOLD",
+      "isVisible": true,
+      "favoriteStatus": "NONE"
+     }
+    ],
+    "hasMore": false,
+    "panelTargetName": null,
+    "pageMarker": null
+   },
+   "panelType": "CuratedList",
+   "playHistoryType": null,
+   "panelContexts": {}
+  },
+  {
+   "panelName": "SmartTunaPre",
+   "panelDisplayName": "End of Season Live Event",
+   "panelSubtitle": "End of Season Live Event",
+   "featureTags": [
+    "bannerItemRow"
+   ],
+   "firstPage": {
+    "results": [
+     {
+      "lastVisited": null,
+      "linkCode": "playlist_smarttunapre",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "RATING_THRESHOLD",
+      "isVisible": true,
+      "favoriteStatus": "NONE"
+     }
+    ],
+    "hasMore": false,
+    "panelTargetName": null,
+    "pageMarker": null
+   },
+   "panelType": "CuratedList",
+   "playHistoryType": null,
+   "panelContexts": {}
+  },
+  {
+   "panelName": "SkyMango",
+   "panelDisplayName": "Chapter Finale Zero Hour",
+   "panelSubtitle": "Chapter Finale Zero Hour",
+   "featureTags": [
+    "bannerItemRow"
+   ],
+   "firstPage": {
+    "results": [
+     {
+      "lastVisited": null,
+      "linkCode": "playlist_skymango",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "RATING_THRESHOLD",
+      "isVisible": true,
+      "favoriteStatus": "NONE"
+     }
+    ],
+    "hasMore": false,
+    "panelTargetName": null,
+    "pageMarker": null
+   },
+   "panelType": "CuratedList",
+   "playHistoryType": null,
+   "panelContexts": {}
+  },
+  {
+   "panelName": "LimeRock",
+   "panelDisplayName": "Welcome, Our Alien Overlords",
+   "panelSubtitle": "Welcome, Our Alien Overlords",
+   "featureTags": [
+    "bannerItemRow"
+   ],
+   "firstPage": {
+    "results": [
+     {
+      "lastVisited": null,
+      "linkCode": "playlist_limerock",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "RATING_THRESHOLD",
+      "isVisible": true,
+      "favoriteStatus": "NONE"
+     }
+    ],
+    "hasMore": false,
+    "panelTargetName": null,
+    "pageMarker": null
+   },
+   "panelType": "CuratedList",
+   "playHistoryType": null,
+   "panelContexts": {}
+  },
+  {
+   "panelName": "StrideMice",
+   "panelDisplayName": "The Daft Punk Experience",
+   "panelSubtitle": "The Daft Punk Experience",
+   "featureTags": [
+    "bannerItemRow"
+   ],
+   "firstPage": {
+    "results": [
+     {
+      "lastVisited": null,
+      "linkCode": "playlist_stridemice",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "RATING_THRESHOLD",
+      "isVisible": true,
+      "favoriteStatus": "NONE"
+     }
+    ],
+    "hasMore": false,
+    "panelTargetName": null,
+    "pageMarker": null
+   },
+   "panelType": "CuratedList",
+   "playHistoryType": null,
+   "panelContexts": {}
+  },
+  {
+   "panelName": "RipeHoneyDew",
+   "panelDisplayName": "Death Star Sabotage",
+   "panelSubtitle": "Death Star Sabotage",
+   "featureTags": [
+    "bannerItemRow"
+   ],
+   "firstPage": {
+    "results": [
+     {
+      "lastVisited": null,
+      "linkCode": "playlist_ripehoneydew",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "RATING_THRESHOLD",
+      "isVisible": true,
+      "favoriteStatus": "NONE"
+     }
+    ],
+    "hasMore": false,
+    "panelTargetName": null,
+    "pageMarker": null
+   },
+   "panelType": "CuratedList",
+   "playHistoryType": null,
+   "panelContexts": {}
+  },
+  {
+   "panelName": "A-Spot",
+   "panelDisplayName": "Remix: The Finale",
+   "panelSubtitle": "Remix: The Finale",
+   "featureTags": [
+    "bannerItemRow"
+   ],
+   "firstPage": {
+    "results": [
+     {
+      "lastVisited": null,
+      "linkCode": "playlist_quail",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "RATING_THRESHOLD",
+      "isVisible": true,
+      "favoriteStatus": "NONE"
+     }
+    ],
+    "hasMore": false,
+    "panelTargetName": null,
+    "pageMarker": null
+   },
+   "panelType": "CuratedList",
+   "playHistoryType": null,
+   "panelContexts": {}
+  },
+  {
+   "panelName": "ByEpicConvergenceReload",
+   "panelNativeDisplayName": "Reload Maps",
+   "panelDisplayName": "Reload Maps",
+   "panelSubtitle": null,
+   "featureTags": [
+    "col:5"
+   ],
+   "firstPage": {
+    "results": [
+     {
+      "linkCode": "playlist_sunflowersolo",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "NONE",
+      "isVisible": true
+     },
+     {
+      "linkCode": "playlist_punchberrysolo",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "NONE",
+      "isVisible": true
+     },
+     {
+      "linkCode": "playlist_dashberrysolo",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "NONE",
+      "isVisible": true
+     },
+     {
+      "linkCode": "playlist_timberstakesolo",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "NONE",
+      "isVisible": true
+     },
+     {
+      "linkCode": "playlist_piperbootsolo",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "NONE",
+      "isVisible": true
+     },
+     {
+      "linkCode": "playlist_matchmistsolo",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "NONE",
+      "isVisible": true
+     },
+     {
+      "linkCode": "playlist_ropesmilesolo",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "NONE",
+      "isVisible": true
+     }
+    ],
+    "hasMore": true,
+    "panelTargetName": null,
+    "pageMarker": null
+   },
+   "panelType": "AnalyticsList",
+   "playHistoryType": null
+  },
+  {
+   "panelName": "ByEpicConvergenceMoreModes",
+   "panelNativeDisplayName": "Other Modes By Epic",
+   "panelDisplayName": "Other Modes By Epic",
+   "panelSubtitle": null,
+   "featureTags": [
+    "col:7",
+    "horizontalScroll:false",
+    "hasViewAll:true",
+    "squareTiles:false",
+    "grid:4"
+   ],
+   "firstPage": {
+    "results": [
+     {
+      "linkCode": "set_figment_playlists",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "NONE",
+      "isVisible": true
+     },
+     {
+      "linkCode": "set_blastberry_playlists",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "NONE",
+      "isVisible": true
+     },
+     {
+      "linkCode": "set_forbiddenfruit_nobuild_playlists",
+      "isFavorite": false,
+      "globalCCU": 0,
+      "lockStatus": "UNLOCKED",
+      "lockStatusReason": "NONE",
+      "isVisible": true
+     }
+    ],
+    "hasMore": true,
+    "panelTargetName": null,
+    "pageMarker": null
+   },
+   "panelType": "AnalyticsList",
+   "playHistoryType": null
+  }
+ ]
+}
