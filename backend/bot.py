@@ -84,6 +84,33 @@ async def resetpassword(i: discord.Interaction, password: str):
     await _reply(i, "Password changed.")
 
 
+@tree.command(name="give", description="[Dev] Give one cosmetic", guild=GUILD)
+@dev_only
+@app_commands.describe(username="Account to give it to", item="Cosmetic name or id")
+async def give(i: discord.Interaction, username: str, item: str):
+    acc = accounts.by_name(username)
+    if not acc:
+        return await _reply(i, "No such account.", False)
+    matches = profiles.find_cosmetics(item, 1)
+    if not matches:
+        return await _reply(i, "No cosmetic matches that.", False)
+    tid = item if item in profiles.NAMES else matches[0]
+    name = profiles.NAMES.get(tid, tid)
+    if tid in profiles.get_profile(acc["accountId"], "athena")["items"]:
+        return await _reply(i, f"**{username}** already owns **{name}**.", False)
+    _edit_profile(acc["accountId"], "athena", lambda p: profiles.grant(p, tid))
+    log("Bot", f"{i.user} gave {name} to {user(username)}", "good")
+    await _reply(i, f"Gave **{name}** (`{tid}`) to **{username}**. Relog to see it.")
+
+
+@give.autocomplete("item")
+async def _give_items(i: discord.Interaction, current: str):
+    if not _is_dev(i) or len(current) < 2:
+        return []
+    return [app_commands.Choice(name=f"{profiles.NAMES.get(t, t)} ({t.split(':')[0]})"[:100], value=t[:100])
+            for t in profiles.find_cosmetics(current)]
+
+
 @tree.command(name="giveall", description="[Dev] Give every cosmetic", guild=GUILD)
 @dev_only
 async def giveall(i: discord.Interaction, username: str):

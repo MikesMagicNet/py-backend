@@ -1,12 +1,29 @@
+import json
+import random
+
 from fastapi import APIRouter, Request
 
-from ..utils import get_version, now_iso
+from ..utils import DATA, get_version, now_iso
 
 router = APIRouter()
 
 # Dev build styling for every news surface
 BRAND = "Fortnite Developer Build"
 TAG = "Developer Preview"
+
+# Neonite's lobby stage and image per build, with a per season fallback
+BACKGROUNDS = json.loads((DATA / "lobby_backgrounds.json").read_text(encoding="utf-8"))
+
+
+def _backgrounds(v) -> list[dict]:
+    entry = BACKGROUNDS["builds"].get(f"{v.build:.2f}") or BACKGROUNDS["seasons"].get(str(v.season), {})
+    stage = entry.get("stage") or entry.get("stages") or f"season{v.season}"
+    stage = random.choice(stage) if isinstance(stage, list) else stage
+    image = entry.get("backgroundImage")
+    lobby = {"stage": stage, "_type": "DynamicBackground", "key": "lobby"}
+    if image:
+        lobby["backgroundimage"] = random.choice(image) if isinstance(image, list) else image
+    return [{"stage": stage, "_type": "DynamicBackground", "key": "vault"}, lobby]
 
 
 def _motd(title: str, body: str, idx: int) -> dict:
@@ -31,6 +48,7 @@ def _messages(v) -> list[dict]:
     ]
 
 
+@router.get("/content/api/pages/ALL")
 @router.get("/content/api/pages/fortnite-game")
 @router.get("/content/api/pages/fortnite-game/{rest:path}")
 async def fortnite_game(request: Request, rest: str = ""):
@@ -64,10 +82,7 @@ async def fortnite_game(request: Request, rest: str = ""):
         "emergencynoticev2": {"emergencynotices": {"_type": "Emergency Notices", "emergencynotices": []},
                               "_title": "emergencynoticev2", "_activeDate": "2018-08-06T19:00:26.217Z",
                               "lastModified": now_iso(), "_locale": "en-US"},
-        "dynamicbackgrounds": {"backgrounds": {"backgrounds": [
-                                   {"stage": f"season{v.season}", "_type": "DynamicBackground", "key": "lobby"},
-                                   {"stage": f"season{v.season}", "_type": "DynamicBackground", "key": "vault"}],
-                                   "_type": "DynamicBackgroundList"},
+        "dynamicbackgrounds": {"backgrounds": {"backgrounds": _backgrounds(v), "_type": "DynamicBackgroundList"},
                                "_title": "dynamicbackgrounds", "_noIndex": False,
                                "_activeDate": "2019-08-21T15:59:59.342Z", "lastModified": now_iso(),
                                "_locale": "en-US"},

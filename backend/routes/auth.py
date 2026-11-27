@@ -227,6 +227,7 @@ async def get_account(account_id: str, request: Request):
 
 
 @router.get("/account/api/public/account")
+@router.get("/api/v1/public/accounts")
 async def get_accounts(request: Request):
     ids = request.query_params.getlist("accountId")
     return [{"id": i, "displayName": accounts.display_name(i), "externalAuths": {}} for i in ids]

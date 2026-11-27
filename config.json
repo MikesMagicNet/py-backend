@@ -1,8 +1,8 @@
 {
   "host": "0.0.0.0",
   "port": 5595,
-  "everythingUnlocked": true,
-  "startingVbucks": 999999,
+  "everythingUnlocked": false,
+  "startingVbucks": 5000,
   "gameServer": {
     "ip": "127.0.0.1",
     "port": 7777

@@ -402,6 +402,7 @@ async def quest_progress(deployment_id: str, account_id: str):
 @router.get("/followers/api/v1/{ns}/{account_id}/followed")
 @router.get("/api/v2/interactions/latest/Fortnite/{account_id}")
 @router.get("/api/v2/interactions/aggregated/_/{account_id}")
+@router.get("/api/v2/interactions/aggregated/Fortnite/{account_id}")
 async def empty_list(account_id: str, ns: str = ""):
     return []
 
@@ -427,4 +428,24 @@ async def verify_match(request: Request):
 
 @router.post("/fortnite/api/game/v2/profileToken/verify/{account_id}")
 async def profile_token_verify(account_id: str):
+    return Response(status_code=204)
+
+
+# Discovery token, retried nonstop while it 404s
+@router.get("/fortnite/api/discovery/accessToken/{branch}")
+async def discovery_token(branch: str):
+    return {"branchName": branch, "appId": "Fortnite", "token": new_id()}
+
+
+# Lobby extras that 404'd on 33.11
+@router.get("/page/v1/{account_id}/check")
+@router.get("/content-controls/{account_id}")
+@router.get("/api/v1/lfg/Fortnite/users/{account_id}/settings")
+async def lobby_empty(account_id: str):
+    return {}
+
+
+@router.post("/auth/v1/turn/credentials")
+@router.put("/v1/rebootrally/eligibility/friends")
+async def lobby_accept():
     return Response(status_code=204)

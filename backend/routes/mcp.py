@@ -242,7 +242,8 @@ async def mcp(account_id: str, route: str, operation: str, request: Request):
             handler(ch, body, account_id=account_id, multi=multi, notifications=notifications)
         except ValueError as e:
             return epic_error("errors.com.epicgames.modules.gamesubcatalog.purchase_not_allowed", str(e), 400, 28004)
-    elif operation not in ("QueryProfile", "ClientQuestLogin", "RefreshExpeditions", "SetReceiveGiftsEnabled"):
+    elif operation not in ("QueryProfile", "ClientQuestLogin", "RefreshExpeditions", "SetReceiveGiftsEnabled",
+                           "RedeemRealMoneyPurchases"):
         log("MCP", f"Unhandled operation {operation} ({profile_id})")
 
     if ch.list:

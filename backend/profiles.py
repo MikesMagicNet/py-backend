@@ -11,6 +11,8 @@ PROFILES_DIR = DATA / "profiles"
 COSMETICS_CACHE = DATA / "cosmetics.json"
 IMAGES_CACHE = DATA / "cosmetic_images.json"
 IMAGES: dict[str, str] = {}  # lowercase cosmetic id -> icon url
+NAMES_CACHE = DATA / "cosmetic_names.json"
+NAMES: dict[str, str] = {}  # template id -> display name
 _lock = threading.Lock()
 _cosmetics: dict[str, dict] = {}
 
@@ -43,6 +45,7 @@ def _fetch() -> dict[str, dict]:
                 continue
             tid = f"{backend}:{c['id'].lower()}"
             items[tid] = _item(tid, _variants(c))
+            NAMES[tid] = c.get("name") or c.get("title") or c["id"]
             imgs = c.get("images") or {}
             url = imgs.get("icon") or imgs.get("smallIcon") or imgs.get("large") or imgs.get("small") or c.get("albumArt")
             if url:
@@ -56,9 +59,10 @@ def load_cosmetics() -> None:
     cached = json.loads(COSMETICS_CACHE.read_text()) if COSMETICS_CACHE.exists() else {}
     fresh = COSMETICS_CACHE.exists() and time.time() - COSMETICS_CACHE.stat().st_mtime < CACHE_MAX_AGE
     # Older caches held BR items only, those get refetched
-    if fresh and IMAGES_CACHE.exists() and any(k.startswith("SparksSong:") for k in cached):
+    if fresh and IMAGES_CACHE.exists() and NAMES_CACHE.exists() and any(k.startswith("SparksSong:") for k in cached):
         _cosmetics = cached
         IMAGES.update(json.loads(IMAGES_CACHE.read_text()))
+        NAMES.update(json.loads(NAMES_CACHE.read_text()))
         log("Cosmetics", f"Loaded {len(_cosmetics)} items from cache")
         return
     try:
@@ -66,11 +70,14 @@ def load_cosmetics() -> None:
         DATA.mkdir(exist_ok=True)
         COSMETICS_CACHE.write_text(json.dumps(_cosmetics))
         IMAGES_CACHE.write_text(json.dumps(IMAGES))
+        NAMES_CACHE.write_text(json.dumps(NAMES))
         log("Cosmetics", f"Fetched {len(_cosmetics)} items")
     except Exception as e:
         _cosmetics = cached
         if IMAGES_CACHE.exists():
             IMAGES.update(json.loads(IMAGES_CACHE.read_text()))
+        if NAMES_CACHE.exists():
+            NAMES.update(json.loads(NAMES_CACHE.read_text()))
         log("Cosmetics", f"Fetch failed, using {len(cached)} cached items: {e}", "error")
 
 
@@ -82,6 +89,28 @@ def _grant_all(profile: dict) -> bool:
             profile["items"][tid] = json.loads(json.dumps(item))
             added = True
     return added
+
+
+def find_cosmetics(query: str, limit: int = 25) -> list[str]:
+    """Template ids matching a name or id, exact matches first."""
+    q = query.strip().lower()
+    hits = []
+    for tid in _cosmetics:
+        name = NAMES.get(tid, "").lower()
+        if q in name or q in tid.lower():
+            exact = q in (name, tid.lower(), tid.split(":", 1)[1].lower())
+            hits.append((not exact, not name.startswith(q), name, tid))
+    return [h[3] for h in sorted(hits)[:limit]]
+
+
+def grant(profile: dict, template_id: str) -> bool:
+    """Adds one cosmetic. False if it's unknown or already owned."""
+    if template_id not in _cosmetics or template_id in profile["items"]:
+        return False
+    item = json.loads(json.dumps(_cosmetics[template_id]))
+    item["attributes"]["item_seen"] = False
+    profile["items"][template_id] = item
+    return True
 
 
 def _item(template_id: str, variants=None, quantity: int = 1) -> dict:
@@ -138,10 +167,10 @@ def _athena(account_id: str) -> dict:
     attrs = {
         "past_seasons": [], "season_match_boost": 0, "loadouts": ["sandbox_loadout"],
         "mfa_reward_claimed": True, "rested_xp_overflow": 0, "quest_manager": {},
-        "book_level": 100, "season_num": 0, "book_xp": 0, "permissions": [],
-        "book_purchased": True, "lifetime_wins": 0, "party_assist_quest": "",
-        "purchased_battle_pass_tier_offers": [], "rested_xp_exchange": 0, "level": 100,
-        "xp_overflow": 0, "rested_xp": 0, "rested_xp_mult": 0, "accountLevel": 100,
+        "book_level": 1, "season_num": 0, "book_xp": 0, "permissions": [],
+        "book_purchased": False, "lifetime_wins": 0, "party_assist_quest": "",
+        "purchased_battle_pass_tier_offers": [], "rested_xp_exchange": 0, "level": 1,
+        "xp_overflow": 0, "rested_xp": 0, "rested_xp_mult": 0, "accountLevel": 1,
         "competitive_identity": {}, "inventory_limit_bonus": 0, "last_applied_loadout": "sandbox_loadout",
         "daily_rewards": {}, "xp": 0, "season_friend_match_boost": 0, "active_loadout_index": 0,
         "favorite_musicpack": "", "favorite_glider": "", "favorite_pickaxe": DEFAULT_ITEMS[1],
